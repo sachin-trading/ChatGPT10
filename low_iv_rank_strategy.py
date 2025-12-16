@@ -20,14 +20,24 @@ class ExitSignal:
     reason: str
 
 class LowIVRankStrategy:
-    def __init__(self, config):
+    def __init__(self, config, data_feed):
         self.config = config
-        self.name = "LOWIV"
+        self.data_feed = data_feed
+        self.name = "LOWIV"        
+        self.df = None        
 
     def evaluate_entry(self, df: pd.DataFrame) -> Optional[EntrySignal]:
         # IV Rank not available -> use dummy low IV condition
         data_feed = DataFeed()
-        pcr = data_feed.fetch_pcr()  # not IV rank but placeholder
+        
+        expiry = select_expiry()
+        if not expiry:
+            return None
+            
+        pcr = self.data_feed.get_live_pcr(df, expiry)
+        if pcr is None:
+            return None
+            
         row = df.iloc[-1]
         if pcr < 0.9 and row["EMA20"] > row["EMA50"]:
             atm = get_atm_strike(row["close"])

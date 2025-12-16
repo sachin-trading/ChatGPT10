@@ -18,9 +18,10 @@ logging.basicConfig(filename=config.LOG_FILE, level=logging.INFO,
 
 def main():
     LOG.info("Bot starting")
+    print("Bot starting")
     token = fyers_auth.ensure_access_token()
     LOG.info("Authenticated (token obtained / read).")
-
+    print("Authenticated (token obtained / read).")    
     data_feed = DataFeed()
     order_mgr = OrderManager(access_token=token)
     strat_mgr = StrategyManager(order_mgr=order_mgr, data_feed=data_feed)
@@ -55,17 +56,21 @@ def main():
                 time.sleep(10)
                 continue
 
+            print(df)
             # Update indicators centrally once
             data_feed.compute_indicators(df)
-
+            print("after compute_indicators")    
             # Evaluate strategies and place orders if signals
             strat_mgr.run_strategies(df)
 
+            print("after run_strategies")
             # Monitor open positions for exit conditions & SL/TP
             strat_mgr.monitor_positions(df)
 
+            print("after monitor_positions")
             # Sleep until next 5m candle approx (simple approach)
             LOG.debug("Loop complete — sleeping 10 seconds")
+            print("Loop complete — sleeping 10 seconds")
             time.sleep(10)
     except KeyboardInterrupt:
         LOG.info("KeyboardInterrupt received - closing positions")

@@ -46,13 +46,13 @@ class StrategyManager:
         self.strategies = {
             "TCB": TCBStrategy(config=config),
             "VWAP": VWAPReclaimStrategy(config=config),
-            "PCR": PCRExtremeStrategy(config=config),
+            "PCR": PCRExtremeStrategy(config=config, data_feed=self.data_feed),
             "ORB": ORBStrategy(config=config),
             "IVCRUSH": IVCrushStrategy(config=config),
             "MARKETPROFILE": MarketProfileStrategy(config=config),
             "MOMENTUM": MomentumBurstStrategy(config=config),
             "SMC": SMCLiquiditySweepStrategy(config=config),
-            "LOWIV": LowIVRankStrategy(config=config),
+            "LOWIV": LowIVRankStrategy(config=config, data_feed=self.data_feed),
             "DELTASCALP": DeltaScalpingStrategy(config=config),
         }
 
@@ -79,7 +79,9 @@ class StrategyManager:
                     # build symbol
                     symbol = self.order_mgr.build_option_symbol(entry.underlying, entry.expiry, entry.strike, entry.direction)
                     qty = lot_size * config.INSTRUMENTS.get(entry.underlying, {}).get("lot_size", 1)
+                    print("%s: placing market order for %s (%s Quantity)",name, symbol, qty)
                     order_resp = self.order_mgr.place_market_order(symbol=symbol, quantity=qty, direction=entry.direction, strategy=name)
+                    print(order_resp)
                     if order_resp.get("status") in ("FILLED", "SIMULATED", "OK"):
                         # Create PositionState
                         entry_price = order_resp.get("avg_price") or order_resp.get("price") or 0.0
