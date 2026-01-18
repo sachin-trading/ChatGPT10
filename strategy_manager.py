@@ -20,6 +20,7 @@ from momentum_burst_strategy import MomentumBurstStrategy
 from smc_liquidity_sweep_strategy import SMCLiquiditySweepStrategy
 from low_iv_rank_strategy import LowIVRankStrategy
 from delta_scalping_strategy import DeltaScalpingStrategy
+from trend_alignment_strategy import TrendAlignmentStrategy
 
 LOG = logging.getLogger("strategy_manager")
 
@@ -58,6 +59,7 @@ class StrategyManager:
             "SMC": SMCLiquiditySweepStrategy(config=config),
             "LOWIV": LowIVRankStrategy(config=config, data_feed=self.data_feed),
             "DELTASCALP": DeltaScalpingStrategy(config=config),
+            "TRENDALIGN": TrendAlignmentStrategy(config=config),
         }
 
     def run_strategies(self, df):

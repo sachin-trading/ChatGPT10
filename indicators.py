@@ -39,6 +39,7 @@ def add_indicators(df):
         df["VWAP"] = (df["close"] * df["volume"]).cumsum() / (df["volume"].cumsum() + 1e-9)
 
     df["RSI"] = compute_rsi(df["close"], 14)
+    df["VOL_SMA20"] = df["volume"].rolling(20).mean()
 
 def compute_rsi(series, period=14):
     delta = series.diff()

@@ -47,4 +47,5 @@ STRATEGY_LOTS = {
    "SMC": 1,
    "LOWIV": 1,
    "DELTASCALP": 1,
+   "TRENDALIGN": 1,
 }
