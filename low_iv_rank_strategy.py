@@ -4,7 +4,6 @@ from typing import Optional
 import pandas as pd
 from expiry_selector import select_expiry
 from option_utils import get_atm_strike
-from data_feed import DataFeed
 
 @dataclass
 class EntrySignal:
@@ -23,29 +22,25 @@ class LowIVRankStrategy:
     def __init__(self, config, data_feed):
         self.config = config
         self.data_feed = data_feed
-        self.name = "LOWIV"        
-        self.df = None        
+        self.name = "LOWIV"
+        self.df = None
 
     def evaluate_entry(self, df: pd.DataFrame) -> Optional[EntrySignal]:
         # IV Rank not available -> use dummy low IV condition
-        data_feed = DataFeed()
-        
-        expiry = select_expiry()
-        if not expiry:
+        exp = select_expiry()
+        if not exp:
             return None
-            
-        pcr = self.data_feed.get_live_pcr(df, expiry)
+
+        pcr = self.data_feed.get_live_pcr(df, exp)
         if pcr is None:
             return None
-            
+
         row = df.iloc[-1]
         if pcr < 0.9 and row["EMA20"] > row["EMA50"]:
             atm = get_atm_strike(row["close"])
-            exp = select_expiry()
             return EntrySignal(direction="CALL", underlying="NIFTY", strike=atm, expiry=exp, reason="Low IV rank trend")
         if pcr < 0.9 and row["EMA20"] < row["EMA50"]:
             atm = get_atm_strike(row["close"])
-            exp = select_expiry()
             return EntrySignal(direction="PUT", underlying="NIFTY", strike=atm, expiry=exp, reason="Low IV rank trend")
         return None
 

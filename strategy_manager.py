@@ -85,14 +85,16 @@ class StrategyManager:
                     if order_resp.get("status") in ("FILLED", "SIMULATED", "OK"):
                         # Create PositionState
                         entry_price = order_resp.get("avg_price") or order_resp.get("price") or 0.0
-                        sl = entry_price - config.STOP_LOSS_POINTS if entry.direction == "PUT" else entry_price - config.STOP_LOSS_POINTS
-                        tp = entry_price + config.TARGET_POINTS if entry.direction == "PUT" else entry_price + config.TARGET_POINTS
+                        # Since we are buying the option (Long), SL is below and TP is above entry price
+                        sl_price = entry_price - config.STOP_LOSS_POINTS
+                        tp_price = entry_price + config.TARGET_POINTS
+
                         pos = PositionState(strategy_name=name, direction=entry.direction,
                                             symbol=symbol, quantity=qty, entry_price=entry_price,
-                                            sl_price=entry_price - config.STOP_LOSS_POINTS if entry.direction == "CALL" else entry_price + config.STOP_LOSS_POINTS,
-                                            tp_price=entry_price + config.TARGET_POINTS if entry.direction == "CALL" else entry_price - config.TARGET_POINTS,
+                                            sl_price=sl_price,
+                                            tp_price=tp_price,
                                             opened_at=datetime.now(),
-                                            meta={"reason": entry.reason})
+                                            meta={"reason": entry.reason, "entry_index_price": df["close"].iloc[-1]})
                         self.active_positions[name] = pos
                         LOG.info("%s: position opened: %s", name, pos)
             except Exception as e:
@@ -103,25 +105,20 @@ class StrategyManager:
             try:
                 strat = self.strategies[name]
                 exit_signal = strat.evaluate_exit(df, pos)
-                # check SL/TP with latest market price
+                # check SL/TP with latest market price of the OPTION
                 last_price = self.data_feed.get_last_price(pos.symbol)
                 if last_price is None:
                     continue
-                # SL hit
-                if pos.direction == "CALL":
-                    if last_price <= pos.sl_price or exit_signal and exit_signal.exit_now:
-                        self._close_position(name, pos, reason="SL/ExitSignal")
-                        continue
-                    if last_price >= pos.tp_price:
-                        self._close_position(name, pos, reason="TP")
-                        continue
-                else:  # PUT or SELL direction semantics (we assume same numeric comparison for simplicity)
-                    if last_price >= pos.sl_price or exit_signal and exit_signal.exit_now:
-                        self._close_position(name, pos, reason="SL/ExitSignal")
-                        continue
-                    if last_price <= pos.tp_price:
-                        self._close_position(name, pos, reason="TP")
-                        continue
+
+                # Logic for LONG option position (both CALL and PUT)
+                if last_price <= pos.sl_price or (exit_signal and exit_signal.exit_now):
+                    self._close_position(name, pos, reason="SL/ExitSignal")
+                    continue
+
+                if last_price >= pos.tp_price:
+                    self._close_position(name, pos, reason="TP")
+                    continue
+
             except Exception as e:
                 LOG.exception("Error while monitoring position %s: %s", name, e)
 
