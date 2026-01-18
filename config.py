@@ -13,8 +13,11 @@ ACCESS_TOKEN = os.getenv("FYERS_ACCESS_TOKEN", "")
 SYMBOLS = ["NIFTY 50", "BANKNIFTY"]
 TIMEFRAME = "5m"
 
-DRY_RUN = False
-ONLY_LOG_ORDER = "N"
+# Execution Mode:
+# "LIVE"    - Real orders placed on exchange
+# "PAPER"   - No real orders, but uses live market prices for logging
+# "DRY_RUN" - No real orders, uses simulated prices (for testing without API access)
+EXECUTION_MODE = "PAPER"
 
 STOP_LOSS_POINTS = 25
 TARGET_POINTS = 35

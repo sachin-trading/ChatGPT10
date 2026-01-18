@@ -37,7 +37,8 @@ class OrderManager:
     # MARGIN – FYERS API V3
     # ==========================================================
     def get_available_margin(self) -> float:
-        if getattr(config, "DRY_RUN", False):
+        mode = getattr(config, "EXECUTION_MODE", "PAPER")
+        if mode != "LIVE":
             return 10_000_000.0
 
         try:
@@ -83,7 +84,9 @@ class OrderManager:
     # PLACE MARKET ORDER
     # ==========================================================
     def place_market_order(self, symbol, quantity, direction, strategy, closing=False) -> Dict:
-        if getattr(config, "DRY_RUN", False):
+        mode = getattr(config, "EXECUTION_MODE", "PAPER")
+
+        if mode == "DRY_RUN":
             self._simulate_order_id += 1
             price = self._simulate_price_for_symbol(symbol)
             return {
@@ -105,10 +108,11 @@ class OrderManager:
                 "validity": "DAY",
             }
 
-            if getattr(config, "ONLY_LOG_ORDER", "N") == "N":
+            if mode == "LIVE":
                 resp = self.fyers.place_order(payload)
             else:
-                resp = {"s": "ok", "id": "LOGGED_ONLY"}
+                # PAPER mode
+                resp = {"s": "ok", "id": "PAPER_ORDER"}
 
             if resp.get("s") != "ok":
                 return {"status": "ERROR", "raw": resp}

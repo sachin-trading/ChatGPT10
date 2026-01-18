@@ -7,6 +7,7 @@ from datetime import datetime
 import config
 from order_manager import OrderManager
 from data_feed import DataFeed
+import forward_test_log
 
 # Import strategy classes
 from tcb_strategy import TCBStrategy
@@ -28,6 +29,9 @@ class PositionState:
     strategy_name: str
     direction: str
     symbol: str
+    underlying: str
+    expiry: Any
+    strike: int
     quantity: int
     entry_price: float
     sl_price: float
@@ -82,6 +86,7 @@ class StrategyManager:
                     print("%s: placing market order for %s (%s Quantity)",name, symbol, qty)
                     order_resp = self.order_mgr.place_market_order(symbol=symbol, quantity=qty, direction=entry.direction, strategy=name)
                     print(order_resp)
+
                     if order_resp.get("status") in ("FILLED", "SIMULATED", "OK"):
                         # Create PositionState
                         entry_price = order_resp.get("avg_price") or order_resp.get("price") or 0.0
@@ -90,13 +95,38 @@ class StrategyManager:
                         tp_price = entry_price + config.TARGET_POINTS
 
                         pos = PositionState(strategy_name=name, direction=entry.direction,
-                                            symbol=symbol, quantity=qty, entry_price=entry_price,
+                                            symbol=symbol,
+                                            underlying=entry.underlying,
+                                            expiry=entry.expiry,
+                                            strike=entry.strike,
+                                            quantity=qty, entry_price=entry_price,
                                             sl_price=sl_price,
                                             tp_price=tp_price,
                                             opened_at=datetime.now(),
                                             meta={"reason": entry.reason, "entry_index_price": df["close"].iloc[-1]})
                         self.active_positions[name] = pos
                         LOG.info("%s: position opened: %s", name, pos)
+
+                        # Log to forward test
+                        try:
+                            forward_test_log.log_forward_test(
+                                strategy=name,
+                                symbol=symbol,
+                                underlying=entry.underlying,
+                                direction=entry.direction,
+                                quantity=qty,
+                                signal_price=entry_price,
+                                status=order_resp.get("order_id", "OK"),
+                                option_type="CE" if symbol.endswith("CE") else "PE",
+                                expiry=entry.expiry.strftime("%Y-%m-%d") if hasattr(entry.expiry, "strftime") else str(entry.expiry),
+                                strike=entry.strike,
+                                mode=getattr(config, "EXECUTION_MODE", "PAPER"),
+                                assumed_fill_price=entry_price,
+                                reason=entry.reason,
+                                remarks="ENTRY"
+                            )
+                        except Exception as log_e:
+                            LOG.error("Failed to log entry to forward_test_log: %s", log_e)
             except Exception as e:
                 LOG.exception("Error while running strategy %s: %s", name, e)
 
@@ -126,6 +156,32 @@ class StrategyManager:
         LOG.info("Closing position for %s (%s) reason=%s", name, pos.symbol, reason)
         resp = self.order_mgr.place_market_order(symbol=pos.symbol, quantity=pos.quantity, direction="SELL" if pos.direction == "CALL" else "BUY", strategy=name, closing=True)
         LOG.info("%s: close response: %s", name, resp)
+
+        # Log to forward test
+        try:
+            exit_price = resp.get("avg_price") or 0.0
+            pnl = (exit_price - pos.entry_price) * pos.quantity
+
+            forward_test_log.log_forward_test(
+                strategy=name,
+                symbol=pos.symbol,
+                underlying=pos.underlying,
+                direction=pos.direction,
+                quantity=pos.quantity,
+                signal_price=exit_price,
+                status=resp.get("order_id", "OK"),
+                option_type="CE" if pos.symbol.endswith("CE") else "PE",
+                expiry=pos.expiry.strftime("%Y-%m-%d") if hasattr(pos.expiry, "strftime") else str(pos.expiry),
+                strike=pos.strike,
+                mode=getattr(config, "EXECUTION_MODE", "PAPER"),
+                exit_price=exit_price,
+                pnl=pnl,
+                reason=reason,
+                remarks="EXIT"
+            )
+        except Exception as log_e:
+            LOG.error("Failed to log exit to forward_test_log: %s", log_e)
+
         del self.active_positions[name]
 
     def close_all_positions(self):
