@@ -10,16 +10,6 @@ from data_feed import DataFeed
 import forward_test_log
 
 # Import strategy classes
-from tcb_strategy import TCBStrategy
-from vwap_reclaim_strategy import VWAPReclaimStrategy
-from pcr_extreme_strategy import PCRExtremeStrategy
-from orb_strategy import ORBStrategy
-from iv_crush_strategy import IVCrushStrategy
-from market_profile_strategy import MarketProfileStrategy
-from momentum_burst_strategy import MomentumBurstStrategy
-from smc_liquidity_sweep_strategy import SMCLiquiditySweepStrategy
-from low_iv_rank_strategy import LowIVRankStrategy
-from delta_scalping_strategy import DeltaScalpingStrategy
 from trend_alignment_strategy import TrendAlignmentStrategy
 
 LOG = logging.getLogger("strategy_manager")
@@ -49,18 +39,8 @@ class StrategyManager:
         self.daily_pnl = 0.0
         self.trading_halted = False
 
-        # instantiate strategies
+        # Only run the TRENDALIGN strategy as requested
         self.strategies = {
-            "TCB": TCBStrategy(config=config),
-            "VWAP": VWAPReclaimStrategy(config=config),
-            "PCR": PCRExtremeStrategy(config=config, data_feed=self.data_feed),
-            "ORB": ORBStrategy(config=config),
-            "IVCRUSH": IVCrushStrategy(config=config),
-            "MARKETPROFILE": MarketProfileStrategy(config=config),
-            "MOMENTUM": MomentumBurstStrategy(config=config),
-            "SMC": SMCLiquiditySweepStrategy(config=config),
-            "LOWIV": LowIVRankStrategy(config=config, data_feed=self.data_feed),
-            "DELTASCALP": DeltaScalpingStrategy(config=config),
             "TRENDALIGN": TrendAlignmentStrategy(config=config),
         }
 

@@ -38,15 +38,5 @@ INSTRUMENTS = {
 }
 
 STRATEGY_LOTS = {
-   "TCB": 1,
-   "VWAP": 2,
-   "PCR": 1,
-   "ORB": 1,
-   "IVCRUSH": 1,
-   "MARKETPROFILE": 1,
-   "MOMENTUM": 1,
-   "SMC": 1,
-   "LOWIV": 1,
-   "DELTASCALP": 1,
    "TRENDALIGN": 1,
 }
