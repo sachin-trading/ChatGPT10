@@ -38,10 +38,10 @@ class TrendAlignmentStrategy:
         bullish_trend = (row["close"] > row["VWAP"]) and (row["close"] > row["EMA20"]) and (row["EMA20"] > prev["EMA20"])
         bearish_trend = (row["close"] < row["VWAP"]) and (row["close"] < row["EMA20"]) and (row["EMA20"] < prev["EMA20"])
 
-        bullish_momentum = row["RSI"] > 60
-        bearish_momentum = row["RSI"] < 40
+        bullish_momentum = row["RSI"] > 65
+        bearish_momentum = row["RSI"] < 35
 
-        volume_burst = row["volume"] > row["VOL_SMA20"]
+        volume_burst = row["volume"] > row["VOL_SMA20"] * 1.2
 
         # Previous 3 candle highs/lows (excluding current)
         last_3 = df.iloc[-4:-1]
