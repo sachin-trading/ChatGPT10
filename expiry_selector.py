@@ -1,36 +1,33 @@
 # expiry_selector.py
 from datetime import date, timedelta
+import datetime
 
-def _next_thursday(from_date):
-    days_ahead = (1 - from_date.weekday()) % 7
-    print(days_ahead)
-    if days_ahead == 0:
-        return from_date
+def _get_thursday(from_date):
+    """Returns the current or next Thursday."""
+    days_ahead = (3 - from_date.weekday()) % 7
     return from_date + timedelta(days=days_ahead)
 
-def _following_thursday(from_date):
-    nxt = _next_thursday(from_date)
-    if nxt == from_date:
-        nxt = nxt + timedelta(days=7)
-    return nxt
-
-def select_expiry(reference_date=None, prefer_next_week=False):
+def is_monthly_expiry(expiry_date):
     """
-    Monday (0) & Tuesday (1) → NEXT WEEK expiry
-    Wed (2), Thu (3), Fri (4) → CURRENT WEEK expiry
-
-    Returns a date (datetime.date) for the expiry (Thursday).
+    Check if the given expiry_date is the last Thursday of its month.
     """
-    import datetime
+    # Get next Thursday from expiry_date + 7 days
+    next_thursday = expiry_date + timedelta(days=7)
+    # If next Thursday is in a different month, then expiry_date is the last Thursday
+    return next_thursday.month != expiry_date.month
+
+def select_expiry(reference_date=None):
+    """
+    Selects the nearest Thursday.
+    If today is Thursday and past 3:30 PM (not handled here, but could be),
+    it might still return today. Usually, the main loop should handle trading hours.
+    """
     if reference_date is None:
-        reference_date = datetime.date.today()
-    wd = reference_date.weekday()  # Mon=0
-    print(wd)
-    if wd in (0, 1):
-        # next-week expiry
-        base = reference_date + timedelta(days=7)
-        print(base)
-        return _next_thursday(base)
-    else:
-        # current-week expiry (closest Thursday)
-        return _next_thursday(reference_date)
+        reference_date = date.today()
+
+    expiry = _get_thursday(reference_date)
+
+    # If today is Thursday but we want to avoid same-day expiry volatility or
+    # it's already past some time, we could shift to next week.
+    # For now, we return the nearest Thursday.
+    return expiry

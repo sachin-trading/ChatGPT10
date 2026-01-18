@@ -29,8 +29,19 @@ def add_indicators(df):
     df["ATR14"] = atr(df, 14)
     df["BB_M"], df["BB_H"], df["BB_L"] = bbands(df, 20, 2)
     df["KC_M"], df["KC_H"], df["KC_L"] = kc(df, 20, 1.5)
-    df["VWAP"] = (df["close"] * df["volume"]).cumsum() / (df["volume"].cumsum() + 1e-9)
+
+    # VWAP calculation (resets daily for better intraday accuracy)
+    if "datetime" in df.columns:
+        df["date_internal"] = pd.to_datetime(df["datetime"]).dt.date
+        df["VWAP"] = df.groupby("date_internal").apply(
+            lambda x: (x["close"] * x["volume"]).cumsum() / (x["volume"].cumsum() + 1e-9)
+        ).reset_index(level=0, drop=True)
+        df.drop(columns=["date_internal"], inplace=True)
+    else:
+        df["VWAP"] = (df["close"] * df["volume"]).cumsum() / (df["volume"].cumsum() + 1e-9)
+
     df["RSI"] = compute_rsi(df["close"], 14)
+    df["VOL_SMA20"] = df["volume"].rolling(window=20).mean()
 
 def compute_rsi(series, period=14):
     delta = series.diff()
