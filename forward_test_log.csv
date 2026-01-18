@@ -1,0 +1,2 @@
+run_id,trade_id,timestamp,mode,strategy,symbol,underlying,direction,option_type,expiry,strike,quantity,signal_price,assumed_fill_price,exit_price,pnl,status,reason,indicators,remarks
+FT_20260118_172406,6e65df2c-e652-4584-87db-fc59c3e1305a,2026-01-18T17:24:07.808471+00:00,PAPER,TCB,MOCK,NIFTY,CALL,PE,2026-01-18,19000,50,50.0,,50.0,-2500.0,MOCK,SL,{},EXIT

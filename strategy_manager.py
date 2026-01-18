@@ -46,6 +46,8 @@ class StrategyManager:
         self.order_mgr = order_mgr
         self.data_feed = data_feed
         self.active_positions: Dict[str, PositionState] = {}  # keyed by strategy name
+        self.daily_pnl = 0.0
+        self.trading_halted = False
 
         # instantiate strategies
         self.strategies = {
@@ -63,6 +65,9 @@ class StrategyManager:
         }
 
     def run_strategies(self, df):
+        if self.trading_halted:
+            return
+
         for name, strat in self.strategies.items():
             try:
                 # prevent overlapping trades per strategy
@@ -159,10 +164,19 @@ class StrategyManager:
         resp = self.order_mgr.place_market_order(symbol=pos.symbol, quantity=pos.quantity, direction="SELL" if pos.direction == "CALL" else "BUY", strategy=name, closing=True)
         LOG.info("%s: close response: %s", name, resp)
 
+        # Calculate PnL points (per unit) for safety check
+        exit_price = resp.get("avg_price") or 0.0
+        pnl_points = exit_price - pos.entry_price
+        self.daily_pnl += pnl_points
+
+        max_loss = getattr(config, "MAX_DAILY_LOSS_POINTS", 100)
+        if self.daily_pnl <= -max_loss:
+            LOG.warning("MAX DAILY LOSS REACHED (%.2f). Halting trading for the day.", self.daily_pnl)
+            self.trading_halted = True
+
         # Log to forward test
         try:
-            exit_price = resp.get("avg_price") or 0.0
-            pnl = (exit_price - pos.entry_price) * pos.quantity
+            pnl = pnl_points * pos.quantity
 
             forward_test_log.log_forward_test(
                 strategy=name,
