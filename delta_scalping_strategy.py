@@ -42,10 +42,12 @@ class DeltaScalpingStrategy:
 
     def evaluate_exit(self, df, position_state):
         row = df.iloc[-1]
-        # super tight exit based on small move or time
+        # super tight exit based on small move of underlying
         last_price = row["close"]
-        if position_state.direction == "CALL" and last_price >= position_state.entry_price + 10:
-            return ExitSignal(exit_now=True, reason="scalp TP")
-        if position_state.direction == "PUT" and last_price <= position_state.entry_price - 10:
-            return ExitSignal(exit_now=True, reason="scalp TP")
+        entry_index = position_state.meta.get("entry_index_price", last_price)
+
+        if position_state.direction == "CALL" and last_price >= entry_index + 20:
+            return ExitSignal(exit_now=True, reason="scalp TP underlying")
+        if position_state.direction == "PUT" and last_price <= entry_index - 20:
+            return ExitSignal(exit_now=True, reason="scalp TP underlying")
         return ExitSignal(exit_now=False, reason="none")

@@ -3,8 +3,8 @@ import logging
 import time
 from datetime import datetime, time as dt_time, timedelta
 
-import config  # :contentReference[oaicite:2]{index=2}
-import fyers_auth  # :contentReference[oaicite:3]{index=3}
+import config
+import fyers_auth
 
 from data_feed import DataFeed
 from strategy_manager import StrategyManager

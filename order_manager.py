@@ -1,10 +1,13 @@
 import logging
 from typing import Dict
 from dataclasses import dataclass
+from datetime import datetime, date, timedelta
+import re
 import config
 import forward_test_log
 
 from fyers_apiv3 import fyersModel
+from option_utils import build_option_symbol
 
 LOG = logging.getLogger("order_manager")
 
@@ -34,7 +37,8 @@ class OrderManager:
     # MARGIN – FYERS API V3
     # ==========================================================
     def get_available_margin(self) -> float:
-        if config.dRY_RUN:
+        mode = getattr(config, "EXECUTION_MODE", "PAPER")
+        if mode != "LIVE":
             return 10_000_000.0
 
         try:
@@ -74,16 +78,15 @@ class OrderManager:
     # OPTION SYMBOL BUILDER
     # ==========================================================
     def build_option_symbol(self, underlying: str, expiry_date, strike: int, direction: str) -> str:
-        expiry_str = expiry_date.strftime("%d%b%y").upper()
-        print(expiry_str)
-        cepe = "CE" if direction == "CALL" else "PE"
-        return f"NSE:{underlying}{expiry_str}{int(strike)}{cepe}"
+        return build_option_symbol(underlying, expiry_date, strike, direction)
 
     # ==========================================================
     # PLACE MARKET ORDER
     # ==========================================================
     def place_market_order(self, symbol, quantity, direction, strategy, closing=False) -> Dict:
-        if config.dRY_RUN:
+        mode = getattr(config, "EXECUTION_MODE", "PAPER")
+
+        if mode == "DRY_RUN":
             self._simulate_order_id += 1
             price = self._simulate_price_for_symbol(symbol)
             return {
@@ -104,20 +107,33 @@ class OrderManager:
                 "productType": "INTRADAY",
                 "validity": "DAY",
             }
-            
-            if config.ONLY_LOG_ORDER == "N":
+
+            if mode == "LIVE":
                 resp = self.fyers.place_order(payload)
+            else:
+                # PAPER mode
+                resp = {"s": "ok", "id": "PAPER_ORDER"}
 
             if resp.get("s") != "ok":
                 return {"status": "ERROR", "raw": resp}
 
-            return {"status": "OK", "order_id": resp.get("id")}
+            order_id = resp.get("id")
+
+            # Approximation of avg_price for market order
+            avg_price = 0.0
+            try:
+                q_resp = self.fyers.quotes({"symbols": symbol})
+                if q_resp.get("s") == "ok" and q_resp.get("d"):
+                    avg_price = float(q_resp["d"][0]["v"]["lp"])
+            except:
+                pass
+
+            return {"status": "OK", "order_id": order_id, "avg_price": avg_price}
 
         except Exception as e:
             LOG.exception("Order placement exception")
             return {"status": "ERROR", "error": str(e)}
 
     def _simulate_price_for_symbol(self, symbol):
-        import re
         m = re.search(r"(\d{4,6})", symbol)
-        return float(m.group(1)) + 1 if m else 100.0
+        return float(m.group(1)) * 0.01 # Better simulation: 1% of strike

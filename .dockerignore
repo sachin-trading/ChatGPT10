@@ -1,0 +1,7 @@
+__pycache__/
+*.log
+.git/
+.env
+Dockerfile
+README.md
+forward_test_log.csv

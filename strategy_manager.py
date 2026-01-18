@@ -7,18 +7,10 @@ from datetime import datetime
 import config
 from order_manager import OrderManager
 from data_feed import DataFeed
+import forward_test_log
 
 # Import strategy classes
-from tcb_strategy import TCBStrategy
-from vwap_reclaim_strategy import VWAPReclaimStrategy
-from pcr_extreme_strategy import PCRExtremeStrategy
-from orb_strategy import ORBStrategy
-from iv_crush_strategy import IVCrushStrategy
-from market_profile_strategy import MarketProfileStrategy
-from momentum_burst_strategy import MomentumBurstStrategy
-from smc_liquidity_sweep_strategy import SMCLiquiditySweepStrategy
-from low_iv_rank_strategy import LowIVRankStrategy
-from delta_scalping_strategy import DeltaScalpingStrategy
+from trend_alignment_strategy import TrendAlignmentStrategy
 
 LOG = logging.getLogger("strategy_manager")
 
@@ -28,6 +20,9 @@ class PositionState:
     strategy_name: str
     direction: str
     symbol: str
+    underlying: str
+    expiry: Any
+    strike: int
     quantity: int
     entry_price: float
     sl_price: float
@@ -41,22 +36,18 @@ class StrategyManager:
         self.order_mgr = order_mgr
         self.data_feed = data_feed
         self.active_positions: Dict[str, PositionState] = {}  # keyed by strategy name
+        self.daily_pnl = 0.0
+        self.trading_halted = False
 
-        # instantiate strategies
+        # Only run the TRENDALIGN strategy as requested
         self.strategies = {
-            "TCB": TCBStrategy(config=config),
-            "VWAP": VWAPReclaimStrategy(config=config),
-            "PCR": PCRExtremeStrategy(config=config, data_feed=self.data_feed),
-            "ORB": ORBStrategy(config=config),
-            "IVCRUSH": IVCrushStrategy(config=config),
-            "MARKETPROFILE": MarketProfileStrategy(config=config),
-            "MOMENTUM": MomentumBurstStrategy(config=config),
-            "SMC": SMCLiquiditySweepStrategy(config=config),
-            "LOWIV": LowIVRankStrategy(config=config, data_feed=self.data_feed),
-            "DELTASCALP": DeltaScalpingStrategy(config=config),
+            "TRENDALIGN": TrendAlignmentStrategy(config=config),
         }
 
     def run_strategies(self, df):
+        if self.trading_halted:
+            return
+
         for name, strat in self.strategies.items():
             try:
                 # prevent overlapping trades per strategy
@@ -82,19 +73,47 @@ class StrategyManager:
                     print("%s: placing market order for %s (%s Quantity)",name, symbol, qty)
                     order_resp = self.order_mgr.place_market_order(symbol=symbol, quantity=qty, direction=entry.direction, strategy=name)
                     print(order_resp)
+
                     if order_resp.get("status") in ("FILLED", "SIMULATED", "OK"):
                         # Create PositionState
                         entry_price = order_resp.get("avg_price") or order_resp.get("price") or 0.0
-                        sl = entry_price - config.STOP_LOSS_POINTS if entry.direction == "PUT" else entry_price - config.STOP_LOSS_POINTS
-                        tp = entry_price + config.TARGET_POINTS if entry.direction == "PUT" else entry_price + config.TARGET_POINTS
+                        # Since we are buying the option (Long), SL is below and TP is above entry price
+                        sl_price = entry_price - config.STOP_LOSS_POINTS
+                        tp_price = entry_price + config.TARGET_POINTS
+
                         pos = PositionState(strategy_name=name, direction=entry.direction,
-                                            symbol=symbol, quantity=qty, entry_price=entry_price,
-                                            sl_price=entry_price - config.STOP_LOSS_POINTS if entry.direction == "CALL" else entry_price + config.STOP_LOSS_POINTS,
-                                            tp_price=entry_price + config.TARGET_POINTS if entry.direction == "CALL" else entry_price - config.TARGET_POINTS,
+                                            symbol=symbol,
+                                            underlying=entry.underlying,
+                                            expiry=entry.expiry,
+                                            strike=entry.strike,
+                                            quantity=qty, entry_price=entry_price,
+                                            sl_price=sl_price,
+                                            tp_price=tp_price,
                                             opened_at=datetime.now(),
-                                            meta={"reason": entry.reason})
+                                            meta={"reason": entry.reason, "entry_index_price": df["close"].iloc[-1]})
                         self.active_positions[name] = pos
                         LOG.info("%s: position opened: %s", name, pos)
+
+                        # Log to forward test
+                        try:
+                            forward_test_log.log_forward_test(
+                                strategy=name,
+                                symbol=symbol,
+                                underlying=entry.underlying,
+                                direction=entry.direction,
+                                quantity=qty,
+                                signal_price=entry_price,
+                                status=order_resp.get("order_id", "OK"),
+                                option_type="CE" if symbol.endswith("CE") else "PE",
+                                expiry=entry.expiry.strftime("%Y-%m-%d") if hasattr(entry.expiry, "strftime") else str(entry.expiry),
+                                strike=entry.strike,
+                                mode=getattr(config, "EXECUTION_MODE", "PAPER"),
+                                assumed_fill_price=entry_price,
+                                reason=entry.reason,
+                                remarks="ENTRY"
+                            )
+                        except Exception as log_e:
+                            LOG.error("Failed to log entry to forward_test_log: %s", log_e)
             except Exception as e:
                 LOG.exception("Error while running strategy %s: %s", name, e)
 
@@ -103,25 +122,20 @@ class StrategyManager:
             try:
                 strat = self.strategies[name]
                 exit_signal = strat.evaluate_exit(df, pos)
-                # check SL/TP with latest market price
+                # check SL/TP with latest market price of the OPTION
                 last_price = self.data_feed.get_last_price(pos.symbol)
                 if last_price is None:
                     continue
-                # SL hit
-                if pos.direction == "CALL":
-                    if last_price <= pos.sl_price or exit_signal and exit_signal.exit_now:
-                        self._close_position(name, pos, reason="SL/ExitSignal")
-                        continue
-                    if last_price >= pos.tp_price:
-                        self._close_position(name, pos, reason="TP")
-                        continue
-                else:  # PUT or SELL direction semantics (we assume same numeric comparison for simplicity)
-                    if last_price >= pos.sl_price or exit_signal and exit_signal.exit_now:
-                        self._close_position(name, pos, reason="SL/ExitSignal")
-                        continue
-                    if last_price <= pos.tp_price:
-                        self._close_position(name, pos, reason="TP")
-                        continue
+
+                # Logic for LONG option position (both CALL and PUT)
+                if last_price <= pos.sl_price or (exit_signal and exit_signal.exit_now):
+                    self._close_position(name, pos, reason="SL/ExitSignal")
+                    continue
+
+                if last_price >= pos.tp_price:
+                    self._close_position(name, pos, reason="TP")
+                    continue
+
             except Exception as e:
                 LOG.exception("Error while monitoring position %s: %s", name, e)
 
@@ -129,6 +143,41 @@ class StrategyManager:
         LOG.info("Closing position for %s (%s) reason=%s", name, pos.symbol, reason)
         resp = self.order_mgr.place_market_order(symbol=pos.symbol, quantity=pos.quantity, direction="SELL" if pos.direction == "CALL" else "BUY", strategy=name, closing=True)
         LOG.info("%s: close response: %s", name, resp)
+
+        # Calculate PnL points (per unit) for safety check
+        exit_price = resp.get("avg_price") or 0.0
+        pnl_points = exit_price - pos.entry_price
+        self.daily_pnl += pnl_points
+
+        max_loss = getattr(config, "MAX_DAILY_LOSS_POINTS", 100)
+        if self.daily_pnl <= -max_loss:
+            LOG.warning("MAX DAILY LOSS REACHED (%.2f). Halting trading for the day.", self.daily_pnl)
+            self.trading_halted = True
+
+        # Log to forward test
+        try:
+            pnl = pnl_points * pos.quantity
+
+            forward_test_log.log_forward_test(
+                strategy=name,
+                symbol=pos.symbol,
+                underlying=pos.underlying,
+                direction=pos.direction,
+                quantity=pos.quantity,
+                signal_price=exit_price,
+                status=resp.get("order_id", "OK"),
+                option_type="CE" if pos.symbol.endswith("CE") else "PE",
+                expiry=pos.expiry.strftime("%Y-%m-%d") if hasattr(pos.expiry, "strftime") else str(pos.expiry),
+                strike=pos.strike,
+                mode=getattr(config, "EXECUTION_MODE", "PAPER"),
+                exit_price=exit_price,
+                pnl=pnl,
+                reason=reason,
+                remarks="EXIT"
+            )
+        except Exception as log_e:
+            LOG.error("Failed to log exit to forward_test_log: %s", log_e)
+
         del self.active_positions[name]
 
     def close_all_positions(self):

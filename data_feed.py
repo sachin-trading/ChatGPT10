@@ -5,7 +5,8 @@ import config
 
 from fyers_apiv3 import fyersModel
 import time
-from option_utils import get_atm_strike
+from option_utils import get_atm_strike, build_option_symbol
+from indicators import add_indicators
 
 LOG = logging.getLogger("data_feed")
 
@@ -23,7 +24,6 @@ class DataFeed:
         )
 
     def compute_indicators(self, df):
-        from indicators import add_indicators
         add_indicators(df)
 
     def get_live_pcr(self, df, expiry_date):
@@ -36,7 +36,7 @@ class DataFeed:
 
         candle_ts = df["datetime"].iloc[-1]
 
-        # ✅ PCR cache per candle
+        # PCR cache per candle
         if self._last_pcr_ts == candle_ts:
             return self._last_pcr
 
@@ -44,13 +44,12 @@ class DataFeed:
             spot = float(df["close"].iloc[-1])
             atm = get_atm_strike(spot)
 
-            strikes = [atm + i * 50 for i in range(-2, 3)]  # ±2 strikes
-            expiry_str = expiry_date.strftime("%y%b").upper()
+            strikes = [atm + i * 50 for i in range(-2, 3)]
 
             symbols = []
             for strike in strikes:
-                symbols.append(f"NIFTY{expiry_str}{strike}CE")
-                symbols.append(f"NIFTY{expiry_str}{strike}PE")
+                symbols.append(build_option_symbol("NIFTY", expiry_date, strike, "CALL"))
+                symbols.append(build_option_symbol("NIFTY", expiry_date, strike, "PUT"))
 
             resp = self.fyers.quotes({"symbols": ",".join(symbols)})
 
@@ -132,18 +131,19 @@ class DataFeed:
         except Exception:
             LOG.exception("Failed to fetch live 5m candles")
             return pd.DataFrame()
-            
-            
+
+
     def get_last_price(self, symbol):
-        # For simulation, return last 'close' from csv
         try:
+            resp = self.fyers.quotes({"symbols": symbol})
+            if resp.get("s") == "ok" and resp.get("d"):
+                return float(resp["d"][0]["v"]["lp"])
+
+            # Fallback to index price if quote fails
             df = self.get_latest_5m()
-            if df.empty:
-                return None
-            return float(df["close"].iloc[-1])
+            if not df.empty:
+                return float(df["close"].iloc[-1])
+            return None
         except Exception as e:
-            LOG.exception("get_last_price error: %s", e)
-            return None            
-            
-            
-            
+            LOG.exception("get_last_price error for %s: %s", symbol, e)
+            return None
