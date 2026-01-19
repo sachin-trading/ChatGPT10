@@ -1,36 +1,42 @@
 # expiry_selector.py
 from datetime import date, timedelta
+import calendar
 
-def _next_thursday(from_date):
-    days_ahead = (1 - from_date.weekday()) % 7
-    print(days_ahead)
-    if days_ahead == 0:
-        return from_date
+def _get_thursday(from_date):
+    """Returns the current or next Thursday (NSE)."""
+    days_ahead = (3 - from_date.weekday()) % 7
     return from_date + timedelta(days=days_ahead)
 
-def _following_thursday(from_date):
-    nxt = _next_thursday(from_date)
-    if nxt == from_date:
-        nxt = nxt + timedelta(days=7)
-    return nxt
-
-def select_expiry(reference_date=None, prefer_next_week=False):
+def is_monthly_expiry(expiry_date):
     """
-    Monday (0) & Tuesday (1) → NEXT WEEK expiry
-    Wed (2), Thu (3), Fri (4) → CURRENT WEEK expiry
-
-    Returns a date (datetime.date) for the expiry (Thursday).
+    Check if the given expiry_date is the last Thursday of its month (NSE).
     """
-    import datetime
+    next_thursday = expiry_date + timedelta(days=7)
+    return next_thursday.month != expiry_date.month
+
+def is_in_last_7_days_of_month(target_date):
+    last_day = calendar.monthrange(target_date.year, target_date.month)[1]
+    return target_date.day > (last_day - 7)
+
+def select_expiry(reference_date=None, segment="NSE"):
+    """
+    Selects the expiry date based on segment.
+    """
     if reference_date is None:
-        reference_date = datetime.date.today()
-    wd = reference_date.weekday()  # Mon=0
-    print(wd)
-    if wd in (0, 1):
-        # next-week expiry
-        base = reference_date + timedelta(days=7)
-        print(base)
-        return _next_thursday(base)
-    else:
-        # current-week expiry (closest Thursday)
-        return _next_thursday(reference_date)
+        reference_date = date.today()
+
+    if segment == "MCX":
+        # Crude Oil MCX options usually expire around the 15th-20th.
+        # For simplicity in this bot, we pick the current month's 19th
+        # or next month's 19th if 19th is passed.
+        # Real implementation should fetch from an option chain API.
+        if reference_date.day > 18:
+            # Next month
+            month = reference_date.month % 12 + 1
+            year = reference_date.year + (1 if reference_date.month == 12 else 0)
+            return date(year, month, 19)
+        else:
+            return date(reference_date.year, reference_date.month, 19)
+
+    # Default NSE Thursday
+    return _get_thursday(reference_date)

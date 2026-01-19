@@ -1,0 +1,12 @@
+services:
+  trading-bot:
+    build: .
+    container_name: nifty-trading-bot
+    env_file:
+      - .env
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

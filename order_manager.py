@@ -2,12 +2,10 @@ import logging
 from typing import Dict
 from dataclasses import dataclass
 import config
-import forward_test_log
-
 from fyers_apiv3 import fyersModel
+from expiry_selector import is_monthly_expiry
 
 LOG = logging.getLogger("order_manager")
-
 
 @dataclass
 class OrderResponse:
@@ -17,75 +15,76 @@ class OrderResponse:
     price: float = 0.0
     raw: Dict = None
 
-
 class OrderManager:
     def __init__(self, access_token: str):
         self.access_token = access_token
-
         self.fyers = fyersModel.FyersModel(
             client_id=config.FYERS_CLIENT_ID,
             token=access_token,
             log_path=None
         )
-
+        if self.fyers is None:
+            LOG.error("Failed to initialize FyersModel in OrderManager")
         self._simulate_order_id = 0
 
-    # ==========================================================
-    # MARGIN – FYERS API V3
-    # ==========================================================
     def get_available_margin(self) -> float:
         if config.dRY_RUN:
             return 10_000_000.0
-
         try:
             resp = self.fyers.funds()
-
             if resp.get("s") != "ok":
                 LOG.error("Margin API failed: %s", resp)
                 return 0.0
-
             fund_limit = resp.get("fund_limit", [])
             available = 0.0
-
             for item in fund_limit:
                 if item.get("title") == "Available Balance":
                     available = float(item.get("equityAmount", 0.0))
                     break
-
             return available
-
         except Exception:
             LOG.exception("Exception while fetching margin")
             return 0.0
 
-    # ==========================================================
-    # MARGIN ESTIMATION (USED BY STRATEGY MANAGER)
-    # ==========================================================
     def estimate_margin(self, entry, lot_size: int) -> float:
-        """
-        Conservative margin estimation for option buying.
-        """
         try:
             return float(config.NOTIONAL_PER_TRADE * lot_size)
         except Exception:
             return float("inf")
 
-    # ==========================================================
-    # OPTION SYMBOL BUILDER
-    # ==========================================================
     def build_option_symbol(self, underlying: str, expiry_date, strike: int, direction: str) -> str:
-        expiry_str = expiry_date.strftime("%d%b%y").upper()
-        print(expiry_str)
+        """
+        Fyers V3 Symbology:
+        NSE Weekly: {Exchange}:{Underlying}{YY}{M}{DD}{Strike}{Type}
+        NSE Monthly: {Exchange}:{Underlying}{YY}{MMM}{Strike}{Type}
+        MCX: {Exchange}:{Underlying}{YY}{MMM}{Strike}{Type}
+        """
+        yy = expiry_date.strftime("%y")
         cepe = "CE" if direction == "CALL" else "PE"
-        return f"NSE:{underlying}{expiry_str}{int(strike)}{cepe}"
 
-    # ==========================================================
-    # PLACE MARKET ORDER
-    # ==========================================================
+        exchange = "NSE"
+        if underlying == "CRUDEOIL":
+            exchange = "MCX"
+            mmm = expiry_date.strftime("%b").upper()
+            symbol = f"{exchange}:{underlying}{yy}{mmm}{int(strike)}{cepe}"
+        else:
+            if is_monthly_expiry(expiry_date):
+                mmm = expiry_date.strftime("%b").upper()
+                symbol = f"{exchange}:{underlying}{yy}{mmm}{int(strike)}{cepe}"
+            else:
+                month = expiry_date.month
+                m_code = str(month) if month < 10 else ("O" if month == 10 else ("N" if month == 11 else "D"))
+                dd = expiry_date.strftime("%d")
+                symbol = f"{exchange}:{underlying}{yy}{m_code}{dd}{int(strike)}{cepe}"
+
+        LOG.info("Built option symbol: %s", symbol)
+        return symbol
+
     def place_market_order(self, symbol, quantity, direction, strategy, closing=False) -> Dict:
         if config.dRY_RUN:
             self._simulate_order_id += 1
-            price = self._simulate_price_for_symbol(symbol)
+            price = 100.0
+            LOG.info("Simulated Order: %s %s %s @ %s", "SELL" if closing else "BUY", quantity, symbol, price)
             return {
                 "status": "SIMULATED",
                 "order_id": f"SIM{self._simulate_order_id}",
@@ -95,18 +94,24 @@ class OrderManager:
 
         try:
             side = 1 if not closing else -1
-
             payload = {
                 "symbol": symbol,
                 "qty": quantity,
                 "type": 2,
                 "side": side,
                 "productType": "INTRADAY",
+                "limitPrice": 0,
+                "stopPrice": 0,
                 "validity": "DAY",
+                "disclosedQty": 0,
+                "offlineOrder": "False",
             }
-            
-            if config.ONLY_LOG_ORDER == "N":
-                resp = self.fyers.place_order(payload)
+            if getattr(config, "ONLY_LOG_ORDER", "N") == "Y":
+                LOG.info("ONLY_LOG_ORDER is Y. Skipping API call for %s", payload)
+                return {"status": "OK", "order_id": "LOGGED_ONLY", "avg_price": 0.0}
+
+            resp = self.fyers.place_order(payload)
+            LOG.info("Fyers place_order response: %s", resp)
 
             if resp.get("s") != "ok":
                 return {"status": "ERROR", "raw": resp}
@@ -116,8 +121,3 @@ class OrderManager:
         except Exception as e:
             LOG.exception("Order placement exception")
             return {"status": "ERROR", "error": str(e)}
-
-    def _simulate_price_for_symbol(self, symbol):
-        import re
-        m = re.search(r"(\d{4,6})", symbol)
-        return float(m.group(1)) + 1 if m else 100.0
