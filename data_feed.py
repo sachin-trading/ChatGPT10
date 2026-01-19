@@ -22,13 +22,16 @@ class DataFeed:
         from indicators import add_indicators
         add_indicators(df)
 
-    def get_latest_5m(self):
-        """Fetch LIVE 5-minute candles for the Index."""
+    def get_latest_5m(self, symbol=None):
+        """Fetch LIVE 5-minute candles for a specific symbol."""
+        if symbol is None:
+            symbol = config.SYMBOLS[0]
+
         try:
             now = int(time.time())
-            start = now - (6 * 60 * 60)
+            start = now - (24 * 60 * 60) # Last 24 hours to ensure enough data for indicators
             data = {
-                "symbol": config.INSTRUMENTS["NIFTY"]["index_symbol"],
+                "symbol": symbol,
                 "resolution": "5",
                 "date_format": "0",
                 "range_from": start,
@@ -37,7 +40,7 @@ class DataFeed:
             }
             resp = self.fyers.history(data)
             if resp.get("s") != "ok":
-                LOG.error("History API failed: %s", resp)
+                LOG.error("History API failed for %s: %s", symbol, resp)
                 return pd.DataFrame()
             candles = resp.get("candles", [])
             if not candles:
@@ -46,7 +49,7 @@ class DataFeed:
             df["datetime"] = pd.to_datetime(df["datetime"], unit="s")
             return df
         except Exception:
-            LOG.exception("Failed to fetch live 5m candles")
+            LOG.exception("Failed to fetch live 5m candles for %s", symbol)
             return pd.DataFrame()
 
     def get_last_price(self, symbol):
@@ -59,15 +62,3 @@ class DataFeed:
         except Exception:
             LOG.exception("Failed to get last price for %s", symbol)
             return None
-
-    def get_live_pcr(self, df, expiry_date):
-        # (Keeping PCR logic if needed, but not used in TRENDALIGN)
-        if df is None or df.empty or expiry_date is None:
-            return None
-        try:
-            spot = float(df["close"].iloc[-1])
-            atm = get_atm_strike(spot)
-            # Simplified PCR for now
-            return 1.0
-        except Exception:
-            return 1.0

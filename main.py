@@ -17,7 +17,7 @@ logging.basicConfig(filename=config.LOG_FILE, level=logging.INFO,
 def main():
     LOG.info("Bot starting")
     print("\n" + "="*40)
-    print("      NIFTY OPTION TRADING BOT")
+    print("      CRUDE OIL / NIFTY TRADING BOT")
     print("="*40)
 
     token = fyers_auth.ensure_access_token()
@@ -29,7 +29,7 @@ def main():
     strat_mgr = StrategyManager(order_mgr=order_mgr, data_feed=data_feed)
 
     LOG.info("Initialized strategy manager with %d strategies", len(strat_mgr.strategies))
-    print(f"INFO: Strategy Manager initialized. active strategy: {', '.join(strat_mgr.strategies.keys())}")
+    print(f"INFO: Strategy Manager initialized. active strategies: {', '.join(strat_mgr.strategies.keys())}")
 
     def within_trading_hours():
         now = datetime.now().time()
@@ -58,21 +58,19 @@ def main():
                 time.sleep(30)
                 continue
 
-            # Fetch Data
-            print(f"[{now.strftime('%H:%M:%S')}] Fetching 5m candles...", end="\r", flush=True)
-            df = data_feed.get_latest_5m()
+            for symbol in config.SYMBOLS:
+                # Fetch Data
+                print(f"[{now.strftime('%H:%M:%S')}] Fetching 5m candles for {symbol}...", end="\r", flush=True)
+                df = data_feed.get_latest_5m(symbol=symbol)
 
-            if df is None or df.empty:
-                msg = f"[{now.strftime('%H:%M:%S')}] WARNING: No data from Fyers. Check Market Status / Token."
-                LOG.warning(msg)
-                print("\n" + msg)
-                time.sleep(30)
-                continue
+                if df is None or df.empty:
+                    LOG.warning("No data from Fyers for %s", symbol)
+                    continue
 
-            # Process Strategies
-            data_feed.compute_indicators(df)
-            strat_mgr.run_strategies(df)
-            strat_mgr.monitor_positions(df)
+                # Process Strategies
+                data_feed.compute_indicators(df)
+                strat_mgr.run_strategies(df)
+                strat_mgr.monitor_positions(df)
 
             # Heartbeat
             LOG.debug("Loop complete")

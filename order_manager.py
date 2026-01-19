@@ -53,22 +53,27 @@ class OrderManager:
     def build_option_symbol(self, underlying: str, expiry_date, strike: int, direction: str) -> str:
         """
         Fyers V3 Symbology:
-        Weekly: {Exchange}:{Underlying}{YY}{M}{DD}{Strike}{Type}
-        Monthly: {Exchange}:{Underlying}{YY}{MMM}{Strike}{Type}
-        M (Weekly Month Code): 1-9, O, N, D
-        MMM (Monthly): JAN, FEB, ...
+        NSE Weekly: {Exchange}:{Underlying}{YY}{M}{DD}{Strike}{Type}
+        NSE Monthly: {Exchange}:{Underlying}{YY}{MMM}{Strike}{Type}
+        MCX: {Exchange}:{Underlying}{YY}{MMM}{Strike}{Type}
         """
         yy = expiry_date.strftime("%y")
         cepe = "CE" if direction == "CALL" else "PE"
 
-        if is_monthly_expiry(expiry_date):
+        exchange = "NSE"
+        if underlying == "CRUDEOIL":
+            exchange = "MCX"
             mmm = expiry_date.strftime("%b").upper()
-            symbol = f"NSE:{underlying}{yy}{mmm}{int(strike)}{cepe}"
+            symbol = f"{exchange}:{underlying}{yy}{mmm}{int(strike)}{cepe}"
         else:
-            month = expiry_date.month
-            m_code = str(month) if month < 10 else ("O" if month == 10 else ("N" if month == 11 else "D"))
-            dd = expiry_date.strftime("%d")
-            symbol = f"NSE:{underlying}{yy}{m_code}{dd}{int(strike)}{cepe}"
+            if is_monthly_expiry(expiry_date):
+                mmm = expiry_date.strftime("%b").upper()
+                symbol = f"{exchange}:{underlying}{yy}{mmm}{int(strike)}{cepe}"
+            else:
+                month = expiry_date.month
+                m_code = str(month) if month < 10 else ("O" if month == 10 else ("N" if month == 11 else "D"))
+                dd = expiry_date.strftime("%d")
+                symbol = f"{exchange}:{underlying}{yy}{m_code}{dd}{int(strike)}{cepe}"
 
         LOG.info("Built option symbol: %s", symbol)
         return symbol
@@ -76,7 +81,7 @@ class OrderManager:
     def place_market_order(self, symbol, quantity, direction, strategy, closing=False) -> Dict:
         if config.dRY_RUN:
             self._simulate_order_id += 1
-            price = 100.0 # Dummy price for simulation
+            price = 100.0
             LOG.info("Simulated Order: %s %s %s @ %s", "SELL" if closing else "BUY", quantity, symbol, price)
             return {
                 "status": "SIMULATED",
@@ -86,13 +91,11 @@ class OrderManager:
             }
 
         try:
-            # For option buying bot, we always BUY to open and SELL to close
             side = 1 if not closing else -1
-
             payload = {
                 "symbol": symbol,
                 "qty": quantity,
-                "type": 2, # Market order
+                "type": 2,
                 "side": side,
                 "productType": "INTRADAY",
                 "limitPrice": 0,
@@ -101,8 +104,6 @@ class OrderManager:
                 "disclosedQty": 0,
                 "offlineOrder": "False",
             }
-
-            # Default to placing order unless ONLY_LOG_ORDER is 'Y'
             if getattr(config, "ONLY_LOG_ORDER", "N") == "Y":
                 LOG.info("ONLY_LOG_ORDER is Y. Skipping API call for %s", payload)
                 return {"status": "OK", "order_id": "LOGGED_ONLY", "avg_price": 0.0}
