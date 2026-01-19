@@ -92,18 +92,17 @@ class DataFeed:
         # Neutral PCR when API fails
         return 1.0
 
-
-    def get_latest_5m(self):
+    def get_latest_5m(self, symbol):
         """
         Fetch LIVE 5-minute candles from Fyers History API.
         This is REAL market data (not CSV).
         """
         try:
             now = int(time.time())
-            start = now - (6 * 60 * 60)  # last 6 hours
+            start = now - (24 * 60 * 60)  # last 24 hours
 
             data = {
-                "symbol": "NSE:NIFTY50-INDEX",
+                "symbol": symbol,
                 "resolution": "5",
                 "date_format": "0",
                 "range_from": start,
@@ -114,7 +113,7 @@ class DataFeed:
             resp = self.fyers.history(data)
 
             if resp.get("s") != "ok":
-                LOG.error("History API failed: %s", resp)
+                LOG.error("History API failed for %s: %s", symbol, resp)
                 return pd.DataFrame()
 
             candles = resp.get("candles", [])
@@ -130,20 +129,21 @@ class DataFeed:
             return df
 
         except Exception:
-            LOG.exception("Failed to fetch live 5m candles")
+            LOG.exception("Failed to fetch live 5m candles for %s", symbol)
             return pd.DataFrame()
-            
-            
+
     def get_last_price(self, symbol):
-        # For simulation, return last 'close' from csv
+        # Fetch LTP for the given symbol
         try:
-            df = self.get_latest_5m()
+            resp = self.fyers.quotes({"symbols": symbol})
+            if resp.get("s") == "ok" and resp.get("d"):
+                return float(resp["d"][0]["v"]["lp"])
+
+            # Fallback to history if quotes fail
+            df = self.get_latest_5m(symbol)
             if df.empty:
                 return None
             return float(df["close"].iloc[-1])
         except Exception as e:
-            LOG.exception("get_last_price error: %s", e)
-            return None            
-            
-            
-            
+            LOG.exception("get_last_price error for %s: %s", symbol, e)
+            return None

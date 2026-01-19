@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+*$py.class
+.env
+bot.log
+fyersApi.log
+fyersRequests.log
+forward_test_log.py
+.vscode/
+.idea/
