@@ -1,0 +1,20 @@
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+env/
+.env
+
+# SQLite
+trading_bot/data/trading.db
+trading_bot/data/trading.db-wal
+trading_bot/data/trading.db-shm
+trading_bot/data/test_trading.db
+
+# Logs
+trading_bot/logs/*.log
+
+# Reports
+trading_bot/reports/*.csv

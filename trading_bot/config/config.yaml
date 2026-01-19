@@ -1,0 +1,18 @@
+trading:
+  mode: PAPER           # PAPER | LIVE
+  broker: FYERS
+  strategy: OPTION_BUY_VWAP_PCR
+
+risk:
+  max_daily_loss: 3000
+  max_trades: 5
+  risk_per_trade: 500
+  squareoff_time: "15:15"
+
+instruments:
+  - type: OPTIDX
+    underlying: NIFTY
+    symbol: "NSE:NIFTY50-INDEX"
+  - type: OPTCOM
+    underlying: CRUDEOIL
+    symbol: "MCX:CRUDEOIL24FEB"
