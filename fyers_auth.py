@@ -30,7 +30,12 @@ def _save_tokens_to_config(access_token, refresh_token=None):
     with open(cfg_path, "w", encoding="utf-8") as f:
         f.writelines(new_lines)
 
-    print("Tokens updated in config.py")
+    # Update in-memory config module
+    config.ACCESS_TOKEN = access_token
+    if refresh_token:
+        config.REFRESH_TOKEN = refresh_token
+
+    print("Tokens updated in config.py and in-memory.")
 
 def get_login_url():
     session = fyersModel.SessionModel(

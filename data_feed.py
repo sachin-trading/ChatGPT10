@@ -9,14 +9,17 @@ from option_utils import get_atm_strike
 LOG = logging.getLogger("data_feed")
 
 class DataFeed:
-    def __init__(self):
+    def __init__(self, access_token: str = None):
         self._last_pcr_ts = None
         self._last_pcr = None
+        token = access_token or config.ACCESS_TOKEN
         self.fyers = fyersModel.FyersModel(
             client_id=config.FYERS_CLIENT_ID,
-            token=config.ACCESS_TOKEN,
+            token=token,
             log_path=None
         )
+        if self.fyers is None:
+            LOG.error("Failed to initialize FyersModel in DataFeed")
 
     def compute_indicators(self, df):
         from indicators import add_indicators

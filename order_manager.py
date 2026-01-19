@@ -23,6 +23,8 @@ class OrderManager:
             token=access_token,
             log_path=None
         )
+        if self.fyers is None:
+            LOG.error("Failed to initialize FyersModel in OrderManager")
         self._simulate_order_id = 0
 
     def get_available_margin(self) -> float:

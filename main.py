@@ -24,8 +24,18 @@ def main():
     LOG.info("Authenticated.")
     print("SUCCESS: Authenticated with Fyers API.")
 
-    data_feed = DataFeed()
+    data_feed = DataFeed(access_token=token)
     order_mgr = OrderManager(access_token=token)
+
+    # Verify Token Connectivity
+    print("INFO: Verifying API connectivity...")
+    profile = order_mgr.fyers.get_profile()
+    if profile.get("s") != "ok":
+        msg = f"ERROR: API Connectivity failed. {profile.get('message', 'Check your credentials.')}"
+        LOG.error(msg)
+        print(msg)
+        return
+
     strat_mgr = StrategyManager(order_mgr=order_mgr, data_feed=data_feed)
 
     LOG.info("Initialized strategy manager with %d strategies", len(strat_mgr.strategies))
