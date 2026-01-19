@@ -1,6 +1,7 @@
 # expiry_selector.py
 from datetime import date, timedelta
 import datetime
+import calendar
 
 def _get_thursday(from_date):
     """Returns the current or next Thursday."""
@@ -16,18 +17,20 @@ def is_monthly_expiry(expiry_date):
     # If next Thursday is in a different month, then expiry_date is the last Thursday
     return next_thursday.month != expiry_date.month
 
+def is_in_last_7_days_of_month(target_date):
+    """
+    Returns True if the target_date is within the last 7 days of its month.
+    For example, if a month has 31 days, it returns True for days 25 to 31.
+    """
+    last_day = calendar.monthrange(target_date.year, target_date.month)[1]
+    return target_date.day > (last_day - 7)
+
 def select_expiry(reference_date=None):
     """
     Selects the nearest Thursday.
-    If today is Thursday and past 3:30 PM (not handled here, but could be),
-    it might still return today. Usually, the main loop should handle trading hours.
     """
     if reference_date is None:
         reference_date = date.today()
 
     expiry = _get_thursday(reference_date)
-
-    # If today is Thursday but we want to avoid same-day expiry volatility or
-    # it's already past some time, we could shift to next week.
-    # For now, we return the nearest Thursday.
     return expiry
