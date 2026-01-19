@@ -10,3 +10,5 @@
 {"level":"ERROR","location":"[post_call:89] fyersModel","message":{"API":"/orders/sync","Error":{"code":-50,"message":"The input symbol is invalid.","s":"error"}},"timestamp":"2025-12-16 15:27:33,166+0530","service":"FyersAPI"}
 {"level":"ERROR","location":"[post_call:89] fyersModel","message":{"API":"/orders/sync","Error":{"code":-50,"message":"The input symbol is invalid.","s":"error"}},"timestamp":"2025-12-16 15:27:34,828+0530","service":"FyersAPI"}
 {"level":"ERROR","location":"[post_call:89] fyersModel","message":{"API":"/orders/sync","Error":{"code":-50,"message":"The input symbol is invalid.","s":"error"}},"timestamp":"2025-12-16 15:27:37,339+0530","service":"FyersAPI"}
+{"level":"ERROR","location":"[get_call:146] fyersModel","message":{"API":"/history","Error":{"code":-16,"message":"Could not authenticate the user","s":"error"}},"timestamp":"2026-01-19 06:53:03,953+0000","service":"FyersAPI"}
+{"level":"ERROR","location":"[get_call:146] fyersModel","message":{"API":"/quotes","Error":{"message":"Please provide valid token","code":-15,"s":"error"}},"timestamp":"2026-01-19 06:53:04,286+0000","service":"FyersAPI"}

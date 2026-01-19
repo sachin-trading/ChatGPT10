@@ -3,82 +3,91 @@ import logging
 import time
 from datetime import datetime, time as dt_time, timedelta
 
-import config  # :contentReference[oaicite:2]{index=2}
-import fyers_auth  # :contentReference[oaicite:3]{index=3}
+import config
+import fyers_auth
 
 from data_feed import DataFeed
 from strategy_manager import StrategyManager
 from order_manager import OrderManager
-from expiry_selector import select_expiry
 
 LOG = logging.getLogger("multi_bot")
 logging.basicConfig(filename=config.LOG_FILE, level=logging.INFO,
                     format="%(asctime)s %(levelname)s %(message)s")
 
-
 def main():
     LOG.info("Bot starting")
-    print("Bot starting")
+    print("\n" + "="*40)
+    print("      NIFTY OPTION TRADING BOT")
+    print("="*40)
+
     token = fyers_auth.ensure_access_token()
-    LOG.info("Authenticated (token obtained / read).")
-    print("Authenticated (token obtained / read).")    
+    LOG.info("Authenticated.")
+    print("SUCCESS: Authenticated with Fyers API.")
+
     data_feed = DataFeed()
     order_mgr = OrderManager(access_token=token)
     strat_mgr = StrategyManager(order_mgr=order_mgr, data_feed=data_feed)
 
-    # load strategies inside StrategyManager (it constructs them)
     LOG.info("Initialized strategy manager with %d strategies", len(strat_mgr.strategies))
+    print(f"INFO: Strategy Manager initialized. active strategy: {', '.join(strat_mgr.strategies.keys())}")
 
-    # Wait until TRADE_START_TIME
     def within_trading_hours():
         now = datetime.now().time()
         start = datetime.strptime(config.TRADE_START_TIME, "%H:%M").time()
         end = datetime.strptime(config.MUST_EXIT_TIME, "%H:%M").time()
         return start <= now <= end
 
+    print("INFO: Entering main loop...")
     try:
         while True:
             now = datetime.now()
+
+            # Check EOD Exit
             if now.time() >= datetime.strptime(config.MUST_EXIT_TIME, "%H:%M").time():
-                LOG.info("Market past MUST_EXIT_TIME - closing all positions")
+                msg = f"[{now.strftime('%H:%M:%S')}] Market past MUST_EXIT_TIME. Closing all positions and exiting."
+                LOG.info(msg)
+                print("\n" + msg)
                 strat_mgr.close_all_positions()
                 break
 
+            # Check Trading Hours
             if not within_trading_hours():
-                LOG.debug("Outside trading hours, sleeping 30s")
+                msg = f"[{now.strftime('%H:%M:%S')}] Outside trading hours. Waiting for {config.TRADE_START_TIME}..."
+                LOG.debug(msg)
+                print(msg, end="\r", flush=True)
                 time.sleep(30)
                 continue
 
-            # Fetch latest 5m candles (data_feed returns a DataFrame with newest last)
+            # Fetch Data
+            print(f"[{now.strftime('%H:%M:%S')}] Fetching 5m candles...", end="\r", flush=True)
             df = data_feed.get_latest_5m()
+
             if df is None or df.empty:
-                LOG.warning("No data returned from data_feed")
-                time.sleep(10)
+                msg = f"[{now.strftime('%H:%M:%S')}] WARNING: No data from Fyers. Check Market Status / Token."
+                LOG.warning(msg)
+                print("\n" + msg)
+                time.sleep(30)
                 continue
 
-            print(df)
-            # Update indicators centrally once
+            # Process Strategies
             data_feed.compute_indicators(df)
-            print("after compute_indicators")    
-            # Evaluate strategies and place orders if signals
             strat_mgr.run_strategies(df)
-
-            print("after run_strategies")
-            # Monitor open positions for exit conditions & SL/TP
             strat_mgr.monitor_positions(df)
 
-            print("after monitor_positions")
-            # Sleep until next 5m candle approx (simple approach)
-            LOG.debug("Loop complete — sleeping 10 seconds")
-            print("Loop complete — sleeping 10 seconds")
+            # Heartbeat
+            LOG.debug("Loop complete")
             time.sleep(10)
+
     except KeyboardInterrupt:
-        LOG.info("KeyboardInterrupt received - closing positions")
+        msg = "KeyboardInterrupt received. Closing positions..."
+        LOG.info(msg)
+        print("\n" + msg)
         strat_mgr.close_all_positions()
     except Exception as e:
-        LOG.exception("Unhandled exception in main loop: %s", e)
+        msg = f"FATAL ERROR: {e}"
+        LOG.exception(msg)
+        print("\n" + msg)
         strat_mgr.close_all_positions()
-
 
 if __name__ == "__main__":
     main()
