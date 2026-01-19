@@ -24,13 +24,22 @@ def kc(df, period=20, mult=1.5):
 
 def add_indicators(df):
     # assumes df has 'open','high','low','close','volume'
+    df["EMA9"] = df["close"].ewm(span=9, adjust=False).mean()
+    df["EMA21"] = df["close"].ewm(span=21, adjust=False).mean()
     df["EMA20"] = df["close"].ewm(span=20, adjust=False).mean()
     df["EMA50"] = df["close"].ewm(span=50, adjust=False).mean()
     df["ATR14"] = atr(df, 14)
     df["BB_M"], df["BB_H"], df["BB_L"] = bbands(df, 20, 2)
     df["KC_M"], df["KC_H"], df["KC_L"] = kc(df, 20, 1.5)
-    df["VWAP"] = (df["close"] * df["volume"]).cumsum() / (df["volume"].cumsum() + 1e-9)
+
+    # Session-aware VWAP
+    df['date'] = df['datetime'].dt.date
+    df["VWAP"] = df.groupby('date').apply(
+        lambda x: (x["close"] * x["volume"]).cumsum() / (x["volume"].cumsum() + 1e-9)
+    ).reset_index(level=0, drop=True)
+
     df["RSI"] = compute_rsi(df["close"], 14)
+    df["VOL_SMA20"] = df["volume"].rolling(20).mean()
 
 def compute_rsi(series, period=14):
     delta = series.diff()

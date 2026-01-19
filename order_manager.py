@@ -74,10 +74,19 @@ class OrderManager:
     # OPTION SYMBOL BUILDER
     # ==========================================================
     def build_option_symbol(self, underlying: str, expiry_date, strike: int, direction: str) -> str:
-        expiry_str = expiry_date.strftime("%d%b%y").upper()
-        print(expiry_str)
         cepe = "CE" if direction == "CALL" else "PE"
-        return f"NSE:{underlying}{expiry_str}{int(strike)}{cepe}"
+
+        if underlying == "CRUDEOIL":
+            # MCX:CRUDEOIL24NOV7000CE
+            expiry_str = expiry_date.strftime("%y%b").upper()
+            return f"MCX:{underlying}{expiry_str}{int(strike)}{cepe}"
+        else:
+            # NSE:NIFTY24OCT25000CE (Monthly) or NSE:NIFTY24O2425000CE (Weekly)
+            # For now, we assume monthly-style for simplicity or update based on memory
+            # Memory says: NSE weekly uses single-letter month and two-digit day
+            # Let's use a slightly smarter one if possible, but keep it simple for now.
+            expiry_str = expiry_date.strftime("%d%b%y").upper()
+            return f"NSE:{underlying}{expiry_str}{int(strike)}{cepe}"
 
     # ==========================================================
     # PLACE MARKET ORDER

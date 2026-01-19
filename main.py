@@ -3,13 +3,12 @@ import logging
 import time
 from datetime import datetime, time as dt_time, timedelta
 
-import config  # :contentReference[oaicite:2]{index=2}
-import fyers_auth  # :contentReference[oaicite:3]{index=3}
+import config
+import fyers_auth
 
 from data_feed import DataFeed
 from strategy_manager import StrategyManager
 from order_manager import OrderManager
-from expiry_selector import select_expiry
 
 LOG = logging.getLogger("multi_bot")
 logging.basicConfig(filename=config.LOG_FILE, level=logging.INFO,
@@ -21,7 +20,7 @@ def main():
     print("Bot starting")
     token = fyers_auth.ensure_access_token()
     LOG.info("Authenticated (token obtained / read).")
-    print("Authenticated (token obtained / read).")    
+    print("Authenticated (token obtained / read).")
     data_feed = DataFeed()
     order_mgr = OrderManager(access_token=token)
     strat_mgr = StrategyManager(order_mgr=order_mgr, data_feed=data_feed)
@@ -29,49 +28,70 @@ def main():
     # load strategies inside StrategyManager (it constructs them)
     LOG.info("Initialized strategy manager with %d strategies", len(strat_mgr.strategies))
 
-    # Wait until TRADE_START_TIME
-    def within_trading_hours():
+    def get_underlying_for_symbol(symbol):
+        for k, v in config.INSTRUMENTS.items():
+            if v["index_symbol"] == symbol:
+                return k
+        return "NIFTY" # Fallback
+
+    def within_trading_hours(symbol):
         now = datetime.now().time()
-        start = datetime.strptime(config.TRADE_START_TIME, "%H:%M").time()
-        end = datetime.strptime(config.MUST_EXIT_TIME, "%H:%M").time()
+        if "MCX:" in symbol:
+            start = datetime.strptime(config.MCX_TRADE_START_TIME, "%H:%M").time()
+            end = datetime.strptime(config.MCX_MUST_EXIT_TIME, "%H:%M").time()
+        else:
+            start = datetime.strptime(config.TRADE_START_TIME, "%H:%M").time()
+            end = datetime.strptime(config.MUST_EXIT_TIME, "%H:%M").time()
         return start <= now <= end
+
+    def is_past_exit_time(symbol):
+        now = datetime.now().time()
+        if "MCX:" in symbol:
+            exit_time = datetime.strptime(config.MCX_MUST_EXIT_TIME, "%H:%M").time()
+        else:
+            exit_time = datetime.strptime(config.MUST_EXIT_TIME, "%H:%M").time()
+        return now >= exit_time
+
+    symbol_closed_status = {sym: False for sym in config.SYMBOLS}
 
     try:
         while True:
-            now = datetime.now()
-            if now.time() >= datetime.strptime(config.MUST_EXIT_TIME, "%H:%M").time():
-                LOG.info("Market past MUST_EXIT_TIME - closing all positions")
-                strat_mgr.close_all_positions()
-                break
+            for symbol in config.SYMBOLS:
+                underlying = get_underlying_for_symbol(symbol)
 
-            if not within_trading_hours():
-                LOG.debug("Outside trading hours, sleeping 30s")
-                time.sleep(30)
-                continue
+                if is_past_exit_time(symbol):
+                    if not symbol_closed_status[symbol]:
+                        LOG.info("Symbol %s past exit time - closing related positions", symbol)
+                        strat_mgr.close_positions_for_underlying(underlying)
+                        symbol_closed_status[symbol] = True
+                    continue
 
-            # Fetch latest 5m candles (data_feed returns a DataFrame with newest last)
-            df = data_feed.get_latest_5m()
-            if df is None or df.empty:
-                LOG.warning("No data returned from data_feed")
-                time.sleep(10)
-                continue
+                if not within_trading_hours(symbol):
+                    LOG.debug("Symbol %s outside trading hours", symbol)
+                    continue
 
-            print(df)
-            # Update indicators centrally once
-            data_feed.compute_indicators(df)
-            print("after compute_indicators")    
-            # Evaluate strategies and place orders if signals
-            strat_mgr.run_strategies(df)
+                # Reset status if somehow we are back in trading hours (e.g. next day)
+                symbol_closed_status[symbol] = False
 
-            print("after run_strategies")
-            # Monitor open positions for exit conditions & SL/TP
-            strat_mgr.monitor_positions(df)
+                # Fetch latest 5m candles
+                df = data_feed.get_latest_5m(symbol)
+                if df is None or df.empty:
+                    LOG.warning("No data returned for %s", symbol)
+                    continue
 
-            print("after monitor_positions")
-            # Sleep until next 5m candle approx (simple approach)
-            LOG.debug("Loop complete — sleeping 10 seconds")
-            print("Loop complete — sleeping 10 seconds")
+                # Update indicators centrally once
+                data_feed.compute_indicators(df)
+
+                # Evaluate strategies for this underlying
+                strat_mgr.run_strategies(df, underlying)
+
+                # Monitor open positions for this underlying
+                strat_mgr.monitor_positions(df, underlying)
+
+            # Global sleep
+            print(f"Loop cycle complete at {datetime.now()} — sleeping 10 seconds")
             time.sleep(10)
+
     except KeyboardInterrupt:
         LOG.info("KeyboardInterrupt received - closing positions")
         strat_mgr.close_all_positions()
