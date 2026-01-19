@@ -1,0 +1,9 @@
+__pycache__/
+*.log
+.git/
+.env
+Dockerfile
+docker-compose.yml
+.env.example
+requirements.txt
+test_symbology.py
