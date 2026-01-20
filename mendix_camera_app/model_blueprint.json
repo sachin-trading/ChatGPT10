@@ -1,0 +1,77 @@
+{
+  "project": "CameraApp",
+  "modules": [
+    {
+      "name": "MainModule",
+      "domainModel": {
+        "entities": [
+          {
+            "name": "CapturedImage",
+            "generalization": "System.Image",
+            "attributes": [
+              {
+                "name": "CaptureTime",
+                "type": "DateTime"
+              }
+            ]
+          }
+        ]
+      },
+      "nanoflows": [
+        {
+          "name": "ACT_TakePhoto",
+          "parameters": [
+            {
+              "name": "ImageObject",
+              "type": "CapturedImage"
+            }
+          ],
+          "activities": [
+            {
+              "type": "NativeMobileResources.TakePicture",
+              "input": "ImageObject",
+              "options": {
+                "source": "Camera",
+                "quality": "Original"
+              }
+            }
+          ],
+          "returnType": "Void"
+        }
+      ],
+      "pages": [
+        {
+          "name": "ImageCapture_Native",
+          "type": "NativeMobile",
+          "widgets": [
+            {
+              "type": "DataView",
+              "entity": "CapturedImage",
+              "children": [
+                {
+                  "type": "ImageViewer",
+                  "source": "Property",
+                  "path": "MainModule.CapturedImage"
+                },
+                {
+                  "type": "Button",
+                  "caption": "Take Photo",
+                  "onClick": {
+                    "action": "CallNanoflow",
+                    "nanoflow": "MainModule.ACT_TakePhoto",
+                    "arguments": [
+                      {
+                        "parameter": "ImageObject",
+                        "value": "$currentObject"
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
