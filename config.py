@@ -11,7 +11,7 @@ SYMBOLS = ["NIFTY 50", "BANKNIFTY"]
 #SYMBOLS = ["CRUDEOILMINI",    "NATURALGASMINI"]
 TIMEFRAME = "5m"
 
-dRY_RUN = False
+DRY_RUN = False
 
 STOP_LOSS_POINTS = 25
 TARGET_POINTS = 35
@@ -27,7 +27,7 @@ NOTIONAL_PER_TRADE = 6000
 
 INSTRUMENTS = {
    "NIFTY": {"index_symbol": "NIFTY", "underlying_symbol": "NIFTY", "lot_size": 75},
-   "BANKNIFTY": {"index_symbol": "BANKNIFTY", "underlying_symbol": "BANKNIFTY", "lot_size": 35},
+   "BANKNIFTY": {"index_symbol": "BANKNIFTY", "underlying_symbol": "BANKNIFTY", "lot_size": 30},
 }
 
 # INSTRUMENTS = {
