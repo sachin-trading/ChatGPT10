@@ -34,7 +34,7 @@ class OrderManager:
     # MARGIN – FYERS API V3
     # ==========================================================
     def get_available_margin(self) -> float:
-        if config.dRY_RUN:
+        if config.DRY_RUN:
             return 10_000_000.0
 
         try:
@@ -74,16 +74,31 @@ class OrderManager:
     # OPTION SYMBOL BUILDER
     # ==========================================================
     def build_option_symbol(self, underlying: str, expiry_date, strike: int, direction: str) -> str:
-        expiry_str = expiry_date.strftime("%d%b%y").upper()
-        print(expiry_str)
+        from expiry_selector import is_in_last_7_days_of_month
+
+        yy = expiry_date.strftime("%y")
+        mm = expiry_date.strftime("%b").upper()
+        dd = expiry_date.strftime("%d")
         cepe = "CE" if direction == "CALL" else "PE"
-        return f"NSE:{underlying}{expiry_str}{int(strike)}{cepe}"
+
+        if is_in_last_7_days_of_month(expiry_date):
+            # Monthly format: NSE:NIFTY24OCT25000CE
+            return f"NSE:{underlying}{yy}{mm}{int(strike)}{cepe}"
+        else:
+            # Weekly format: NSE:NIFTY24O3125000CE
+            # Month code: 1-9 for Jan-Sep, O for Oct, N for Nov, D for Dec
+            month_map = {
+                1: "1", 2: "2", 3: "3", 4: "4", 5: "5", 6: "6",
+                7: "7", 8: "8", 9: "9", 10: "O", 11: "N", 12: "D"
+            }
+            m_code = month_map[expiry_date.month]
+            return f"NSE:{underlying}{yy}{m_code}{dd}{int(strike)}{cepe}"
 
     # ==========================================================
     # PLACE MARKET ORDER
     # ==========================================================
     def place_market_order(self, symbol, quantity, direction, strategy, closing=False) -> Dict:
-        if config.dRY_RUN:
+        if config.DRY_RUN:
             self._simulate_order_id += 1
             price = self._simulate_price_for_symbol(symbol)
             return {

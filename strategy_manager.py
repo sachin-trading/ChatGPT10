@@ -85,12 +85,14 @@ class StrategyManager:
                     if order_resp.get("status") in ("FILLED", "SIMULATED", "OK"):
                         # Create PositionState
                         entry_price = order_resp.get("avg_price") or order_resp.get("price") or 0.0
-                        sl = entry_price - config.STOP_LOSS_POINTS if entry.direction == "PUT" else entry_price - config.STOP_LOSS_POINTS
-                        tp = entry_price + config.TARGET_POINTS if entry.direction == "PUT" else entry_price + config.TARGET_POINTS
+                        # For long options, SL is always below entry and TP is always above entry
+                        sl_price = entry_price - config.STOP_LOSS_POINTS
+                        tp_price = entry_price + config.TARGET_POINTS
+
                         pos = PositionState(strategy_name=name, direction=entry.direction,
                                             symbol=symbol, quantity=qty, entry_price=entry_price,
-                                            sl_price=entry_price - config.STOP_LOSS_POINTS if entry.direction == "CALL" else entry_price + config.STOP_LOSS_POINTS,
-                                            tp_price=entry_price + config.TARGET_POINTS if entry.direction == "CALL" else entry_price - config.TARGET_POINTS,
+                                            sl_price=sl_price,
+                                            tp_price=tp_price,
                                             opened_at=datetime.now(),
                                             meta={"reason": entry.reason})
                         self.active_positions[name] = pos
@@ -107,21 +109,16 @@ class StrategyManager:
                 last_price = self.data_feed.get_last_price(pos.symbol)
                 if last_price is None:
                     continue
-                # SL hit
-                if pos.direction == "CALL":
-                    if last_price <= pos.sl_price or exit_signal and exit_signal.exit_now:
-                        self._close_position(name, pos, reason="SL/ExitSignal")
-                        continue
-                    if last_price >= pos.tp_price:
-                        self._close_position(name, pos, reason="TP")
-                        continue
-                else:  # PUT or SELL direction semantics (we assume same numeric comparison for simplicity)
-                    if last_price >= pos.sl_price or exit_signal and exit_signal.exit_now:
-                        self._close_position(name, pos, reason="SL/ExitSignal")
-                        continue
-                    if last_price <= pos.tp_price:
-                        self._close_position(name, pos, reason="TP")
-                        continue
+
+                # For long options (both CALL and PUT), we want price to go UP.
+                # SL is triggered if price falls below sl_price.
+                # TP is triggered if price rises above tp_price.
+                if last_price <= pos.sl_price or (exit_signal and exit_signal.exit_now):
+                    self._close_position(name, pos, reason="SL/ExitSignal")
+                    continue
+                if last_price >= pos.tp_price:
+                    self._close_position(name, pos, reason="TP")
+                    continue
             except Exception as e:
                 LOG.exception("Error while monitoring position %s: %s", name, e)
 

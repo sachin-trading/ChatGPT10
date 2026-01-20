@@ -135,14 +135,28 @@ class DataFeed:
             
             
     def get_last_price(self, symbol):
-        # For simulation, return last 'close' from csv
+        """
+        Fetch LTP for a specific symbol using Fyers Quotes API.
+        """
+        if config.DRY_RUN:
+            # For dry run, if we are in testing or don't have API access,
+            # return the last candle close of the index as a proxy.
+            try:
+                df = self.get_latest_5m()
+                if not df.empty:
+                    return float(df["close"].iloc[-1])
+            except Exception:
+                pass
+
         try:
-            df = self.get_latest_5m()
-            if df.empty:
-                return None
-            return float(df["close"].iloc[-1])
+            resp = self.fyers.quotes({"symbols": symbol})
+            if resp.get("s") == "ok" and resp.get("d"):
+                return float(resp["d"][0]["v"]["lp"])
+
+            LOG.warning("Quotes API failed for %s, resp: %s", symbol, resp)
+            return None
         except Exception as e:
-            LOG.exception("get_last_price error: %s", e)
+            LOG.exception("get_last_price error for %s: %s", symbol, e)
             return None            
             
             
